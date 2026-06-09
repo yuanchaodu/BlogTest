@@ -6,11 +6,10 @@ on:
       - main
     paths:
       - "content/**/*.md"
-      - "!content/**/images/**"
 
-permissions:
-  contents: write
-  discussions: write
+concurrency:
+  group: sync-discussions-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -19,28 +18,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DISCUSSION_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
-        run: |
-          npm install gray-matter @octokit/graphql
+        run: npm install gray-matter @octokit/graphql
 
       - name: Sync discussions
         env:
           GITHUB_TOKEN: ${{ secrets.DISCUSSION_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
-        run: |
-          node scripts/sync-discussion/sync.js
+        run: node scripts/sync-discussion/sync.js
 
       - name: Commit discussion ids
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add content
-          git diff --cached --quiet || git commit -m "chore: update discussion ids"
+          git diff --cached --quiet || git commit -m "chore: update discussion ids [skip ci]"
           git push
