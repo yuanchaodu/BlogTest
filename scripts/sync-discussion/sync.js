@@ -116,12 +116,29 @@ function inferSectionAndCategory(filePath) {
 }
 
 function convertImagePaths(content, filePath) {
-  const relativeDir = path.dirname(path.relative(process.cwd(), filePath)).replace(/\\/g, "/");
+  const relativeDir = path.dirname(
+    path.relative(process.cwd(), filePath)
+  ).replace(/\\/g, "/");
 
-  return content.replace(/!\[([^\]]*)\]\((?!https?:\/\/)([^)]+)\)/g, (match, alt, imgPath) => {
-    const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
-    return `![${alt}](https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath})`;
-  });
+  // Markdown image
+  content = content.replace(
+    /!\[([^\]]*)\]\(([^)]+)\)/g,
+    (match, alt, imgPath) => {
+      const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
+      return `![${alt}](https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath})`;
+    }
+  );
+
+  // HTML image
+  content = content.replace(
+    /<img\s+src="([^"]+)"/g,
+    (match, imgPath) => {
+      const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
+      return `<img src="https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath}"`;
+    }
+  );
+
+  return content;
 }
 
 async function main() {
