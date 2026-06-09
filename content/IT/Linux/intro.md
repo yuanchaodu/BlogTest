@@ -1,5 +1,5 @@
 ---
-title: Linux 简介
+title: Linux 简介讲解
 section: IT
 category: Linux
 discussion_id: D_kwDOS1KKRc4AnAWS
