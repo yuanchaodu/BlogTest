@@ -1,0 +1,45 @@
+name: Sync Markdown to GitHub Discussions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "content/**/*.md"
+
+permissions:
+  contents: write
+  discussions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install gray-matter @octokit/graphql
+
+      - name: Sync discussions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          node scripts/sync-discussion/sync.js
+
+      - name: Commit discussion ids
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add content
+          git diff --cached --quiet || git commit -m "chore: update discussion ids"
+          git push
