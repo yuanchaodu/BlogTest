@@ -12,4 +12,8 @@ discussion_url: 'https://github.com/yuanchaodu/Blog/discussions/3'
 
 <img src="images/Linux.svg" width="300">
 
+<div align="center">
+  <img src="images/Linux.svg" width="300">
+</div>
+
 这里写正文内容1234567。
