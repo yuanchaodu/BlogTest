@@ -12,4 +12,4 @@ discussion_url: 'https://github.com/yuanchaodu/Blog/discussions/3'
 
 <img src="images/Linux.svg" width="300">
 
-这里写正文内容123。
+这里写正文内容1234。
