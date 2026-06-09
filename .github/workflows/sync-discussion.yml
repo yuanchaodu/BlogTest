@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "content/**/*.md"
+      - "!content/**/images/**"
 
 permissions:
   contents: write
