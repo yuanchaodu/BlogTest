@@ -6,38 +6,29 @@ const { graphql } = require("@octokit/graphql");
 const owner = process.env.REPO_OWNER;
 const repo = process.env.REPO_NAME;
 const token = process.env.GITHUB_TOKEN;
-
 const contentDir = path.join(process.cwd(), "content");
 
-const graphqlWithAuth = graphql.defaults({
-  headers: {
-    authorization: `token ${token}`,
-  },
+const github = graphql.defaults({
+  headers: { authorization: `token ${token}` },
 });
 
 function walk(dir) {
-  let results = [];
+  if (!fs.existsSync(dir)) return [];
 
-  if (!fs.existsSync(dir)) return results;
-
-  for (const file of fs.readdirSync(dir)) {
-    const fullPath = path.join(dir, file);
+  return fs.readdirSync(dir).flatMap((name) => {
+    const fullPath = path.join(dir, name);
     const stat = fs.statSync(fullPath);
 
     if (stat.isDirectory()) {
-      if (file.toLowerCase() !== "images") {
-        results = results.concat(walk(fullPath));
-      }
-    } else if (file.endsWith(".md")) {
-      results.push(fullPath);
+      return name.toLowerCase() === "images" ? [] : walk(fullPath);
     }
-  }
 
-  return results;
+    return name.endsWith(".md") ? [fullPath] : [];
+  });
 }
 
-async function getRepositoryInfo() {
-  const result = await graphqlWithAuth(`
+async function getRepository() {
+  const { repository } = await github(`
     query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) {
         id
@@ -49,16 +40,13 @@ async function getRepositoryInfo() {
         }
       }
     }
-  `, {
-    owner,
-    repo,
-  });
+  `, { owner, repo });
 
-  return result.repository;
+  return repository;
 }
 
 async function createDiscussion(repositoryId, categoryId, title, body) {
-  const result = await graphqlWithAuth(`
+  const { createDiscussion } = await github(`
     mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
       createDiscussion(input: {
         repositoryId: $repositoryId,
@@ -72,18 +60,13 @@ async function createDiscussion(repositoryId, categoryId, title, body) {
         }
       }
     }
-  `, {
-    repositoryId,
-    categoryId,
-    title,
-    body,
-  });
+  `, { repositoryId, categoryId, title, body });
 
-  return result.createDiscussion.discussion;
+  return createDiscussion.discussion;
 }
 
 async function updateDiscussion(discussionId, title, body) {
-  const result = await graphqlWithAuth(`
+  const { updateDiscussion } = await github(`
     mutation($discussionId: ID!, $title: String!, $body: String!) {
       updateDiscussion(input: {
         discussionId: $discussionId,
@@ -96,18 +79,13 @@ async function updateDiscussion(discussionId, title, body) {
         }
       }
     }
-  `, {
-    discussionId,
-    title,
-    body,
-  });
+  `, { discussionId, title, body });
 
-  return result.updateDiscussion.discussion;
+  return updateDiscussion.discussion;
 }
 
-function inferSectionAndCategory(filePath) {
-  const relative = path.relative(contentDir, filePath);
-  const parts = relative.split(path.sep);
+function getInfo(file) {
+  const parts = path.relative(contentDir, file).split(path.sep);
 
   return {
     section: parts[0],
@@ -115,73 +93,49 @@ function inferSectionAndCategory(filePath) {
   };
 }
 
-function convertImagePaths(content, filePath) {
-  const relativeDir = path.dirname(
-    path.relative(process.cwd(), filePath)
-  ).replace(/\\/g, "/");
+function toRawUrl(file, imgPath) {
+  if (/^(https?:|data:)/i.test(imgPath)) return imgPath;
 
-  // Markdown image
-  content = content.replace(
-    /!\[([^\]]*)\]\(([^)]+)\)/g,
-    (match, alt, imgPath) => {
-      const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
-      return `![${alt}](https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath})`;
-    }
-  );
+  const dir = path.dirname(path.relative(process.cwd(), file)).replace(/\\/g, "/");
+  const fullPath = `${dir}/${imgPath}`.replace(/\\/g, "/");
 
-  // HTML image
-  content = content.replace(
-    /<img\s+src="([^"]+)"/g,
-    (match, imgPath) => {
-      const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
-      return `<img src="https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath}"`;
-    }
-  );
+  return `https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath}`;
+}
 
-  return content;
+function convertImages(content, file) {
+  return content
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+      return `![${alt}](${toRawUrl(file, src)})`;
+    })
+    .replace(/<img\s+src="([^"]+)"/g, (_, src) => {
+      return `<img src="${toRawUrl(file, src)}"`;
+    });
 }
 
 async function main() {
   const files = walk(contentDir);
 
-  if (files.length === 0) {
+  if (!files.length) {
     console.log("No markdown files found.");
     return;
   }
 
-  const repoInfo = await getRepositoryInfo();
-  const repositoryId = repoInfo.id;
-
+  const repository = await getRepository();
   const categoryMap = new Map(
-    repoInfo.discussionCategories.nodes.map((item) => [
-      item.name.toLowerCase(),
-      item.id,
+    repository.discussionCategories.nodes.map((c) => [
+      c.name.toLowerCase(),
+      c.id,
     ])
   );
 
   for (const file of files) {
     const raw = fs.readFileSync(file, "utf8");
     const parsed = matter(raw);
+    const inferred = getInfo(file);
 
-    const inferred = inferSectionAndCategory(file);
-
-    const title =
-      parsed.data.title ||
-      path.basename(file, ".md");
-
-    const section =
-      parsed.data.section ||
-      inferred.section;
-
-    const category =
-      parsed.data.category ||
-      inferred.category;
-
-    if (!category) {
-      console.warn(`Skip: category not found in ${file}`);
-      continue;
-    }
-
+    const title = parsed.data.title || path.basename(file, ".md");
+    const section = parsed.data.section || inferred.section;
+    const category = parsed.data.category || inferred.category;
     const categoryId = categoryMap.get(String(category).toLowerCase());
 
     if (!categoryId) {
@@ -189,37 +143,31 @@ async function main() {
       continue;
     }
 
-    const body = convertImagePaths(parsed.content.trim(), file);
-
-    let discussion;
+    const body = convertImages(parsed.content.trim(), file);
 
     if (parsed.data.discussion_id) {
-      discussion = await updateDiscussion(
-        parsed.data.discussion_id,
-        title,
-        body
-      );
-
+      await updateDiscussion(parsed.data.discussion_id, title, body);
       console.log(`Updated: ${title}`);
-    } else {
-      discussion = await createDiscussion(
-        repositoryId,
-        categoryId,
-        title,
-        body
-      );
-
-      parsed.data.discussion_id = discussion.id;
-      parsed.data.discussion_url = discussion.url;
-      parsed.data.section = section;
-      parsed.data.category = category;
-      parsed.data.title = title;
-
-      const newContent = matter.stringify(parsed.content, parsed.data);
-      fs.writeFileSync(file, newContent, "utf8");
-
-      console.log(`Created: ${title}`);
+      continue;
     }
+
+    const discussion = await createDiscussion(
+      repository.id,
+      categoryId,
+      title,
+      body
+    );
+
+    Object.assign(parsed.data, {
+      title,
+      section,
+      category,
+      discussion_id: discussion.id,
+      discussion_url: discussion.url,
+    });
+
+    fs.writeFileSync(file, matter.stringify(parsed.content, parsed.data), "utf8");
+    console.log(`Created: ${title}`);
   }
 }
 

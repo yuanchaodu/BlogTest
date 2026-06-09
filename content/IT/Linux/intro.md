@@ -1,5 +1,5 @@
 ---
-title: Linux 简介讲解
+title: Linux 简介
 section: IT
 category: Linux
 ---
@@ -14,4 +14,4 @@ category: Linux
   <img src="images/Linux.svg" width="300">
 </div>
 
-这里写正文内容1234567。
+这里写正文内容12345678。
