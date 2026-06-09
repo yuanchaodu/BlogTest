@@ -115,6 +115,15 @@ function inferSectionAndCategory(filePath) {
   };
 }
 
+function convertImagePaths(content, filePath) {
+  const relativeDir = path.dirname(path.relative(process.cwd(), filePath)).replace(/\\/g, "/");
+
+  return content.replace(/!\[([^\]]*)\]\((?!https?:\/\/)([^)]+)\)/g, (match, alt, imgPath) => {
+    const fullPath = `${relativeDir}/${imgPath}`.replace(/\\/g, "/");
+    return `![${alt}](https://raw.githubusercontent.com/${owner}/${repo}/main/${fullPath})`;
+  });
+}
+
 async function main() {
   const files = walk(contentDir);
 
@@ -163,7 +172,7 @@ async function main() {
       continue;
     }
 
-    const body = parsed.content.trim();
+    const body = convertImagePaths(parsed.content.trim(), file);
 
     let discussion;
 
